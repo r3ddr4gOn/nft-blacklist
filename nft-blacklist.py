@@ -3,44 +3,45 @@
 # Python script for updating the nftables blacklist
 
 import urllib.request
-import subprocess
-import tempfile
 
-#Binaries
-NFT = '/usr/sbin/nft'
+# Variables (Change accordingly)
+ip_file = '/etc/nftables/inet_filter_ip_black_country.inc'
+ip6_file = '/etc/nftables/inet_filter_ip6_black_country.inc'
+# ISO 3166 ALPHA2 country codes
+country_codes = ('cn', 'ru')
 
-#nftables Variables (Change accordingly)
-FAMILY = 'ip'
-TABLE = 'filter'
-SET_NAME = 'blacklist'
+# Constants
+FILE_HEADER = 'elements = {'
+FILE_FOOTER = '}'
+IPDENY_IP_URL = 'http://www.ipdeny.com/ipblocks/data/aggregated/{}-aggregated.zone'
+IPDENY_IP6_URL = 'http://www.ipdeny.com/ipv6/ipaddresses/aggregated/{}-aggregated.zone'
 
-#Temp File Header
-FILE_HEADER = ('table {} {} {{\n'
-               'set {} {{\n'
-               'type ipv4_addr\n'
-               'flags interval\n')
 
-IPDENY_URL= 'http://www.ipdeny.com/ipblocks/data/aggregated/{}-aggregated.zone'
-COUNTRY_CODES = ('cn','ru')  #Check ipdeny.com for the country codes
+def update_blacklist(set_file, url):
+    blacklist = []
 
-def update_blacklist():
-    for c in COUNTRY_CODES:
+    # download all requested country ip blocks
+    for c in country_codes:
         print('Downloading "{}" IP blocks..'.format(c))
-        ip_blocks = urllib.request.urlopen(IPDENY_URL.format(c))
-
-        print('Building list of IP blocks..')
+        ip_blocks = urllib.request.urlopen(url.format(c))
         data = ip_blocks.read().decode('utf-8')
-        blacklist_ips = ',\n'.join(data.splitlines())
-        blacklist_ips = ''.join(('elements = {', blacklist_ips, '}\n}\n}\n'))
+        blacklist.extend(data.splitlines())
 
-        with tempfile.NamedTemporaryFile(mode='w') as tmp:
-            tmp.write(FILE_HEADER.format(FAMILY, TABLE, SET_NAME))
-            tmp.write(blacklist_ips)
+    # concatenate all ip blocks
+    blacklist = ',\n'.join(blacklist)
 
-            print('Adding the "{}" IP blocks to the blacklist..'.format(c))
-            subprocess.run([NFT, '-f', tmp.name])
+    print('Updating the blacklist file..')
+    with open(set_file, 'w') as f:
+        f.write('\n'.join((FILE_HEADER, blacklist, FILE_FOOTER, '')))
 
+
+def update_blacklists():
+    if ip_file:
+        update_blacklist(ip_file, IPDENY_IP_URL)
+    if ip6_file:
+        update_blacklist(ip6_file, IPDENY_IP6_URL)
     print('Done!')
 
+
 if __name__ == '__main__':
-    update_blacklist()
+    update_blacklists()
